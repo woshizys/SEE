@@ -1,10 +1,5 @@
 <script setup lang="ts">
-import { useCounterStore } from '@/stores/counter';
-import ExampleApi from '@/api/example';
-
-const counterStore = useCounterStore();
-const { count } = storeToRefs(counterStore);
-const increment = counterStore.increment;
+import LruCacheApi from '@/api/lru_cache';
 
 const test_env = () => {
   console.log(
@@ -14,33 +9,44 @@ const test_env = () => {
   console.debug('import.meta.env.BASE_URL', import.meta.env.BASE_URL);
 };
 
-const test_axios = () => {
-  console.log('start test_axios');
-  const param = {
-    content: 'abceeee',
-  };
-  ExampleApi.exampleRequest(param)
+const downloadKey = ref('');
+const downloadData = () => {
+  console.log('start download data from', downloadKey.value);
+  LruCacheApi.downloadData({ key: inputKey.value })
     .then((res) => {
-      console.log('example res', res);
+      console.log('res', res);
     })
     .catch((err) => {
-      console.log('example err', err);
+      console.error('err', err);
     });
-};
+}
+
+const uploadContentText = ref('');
+const uploadKey = ref('');
+const uploadData = () => {
+  console.log('start upload text data', uploadContentText.value);
+  LruCacheApi.uploadData({ content: uploadContentText.value })
+    .then((res) => {
+      console.log('res', res);
+    })
+    .catch((err) => {
+      console.error('err', err);
+    });
+}
 </script>
 
 <template>
-  <div>{{ count }}</div>
-  <el-button type="primary" size="default" @click="increment"
-    >Increment</el-button
-  >
+  <div class="image-example">
+    <WrappedImage></WrappedImage>
+  </div>
   <br />
-  <el-button type="info" size="default" @click="test_env">Test env</el-button>
+  <el-input v-model="downloadKey" placeholder="input key"></el-input>
+  <el-button type="info" size="default" @click="downloadData">Download Data From LRU Cache</el-button>
   <br />
-  <el-button type="warning" size="default" @click="test_axios"
-    >Test axios</el-button
-  >
-  <div class="image-example"><WrappedImage></WrappedImage></div>
+  <el-input v-model="uploadContentText" placeholder="text to upload"></el-input>
+  <el-text>Key of the last uploaded data: {{ uploadKey }}</el-text>
+  <br />
+  <el-button type="info" size="default" @click="uploadData">Upload Text Data to LRU Cache</el-button>
 </template>
 
 <style scoped>
