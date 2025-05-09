@@ -13,6 +13,7 @@
   "dependencies": {
     "animate.css": "^4.1.1",
     "axios": "^1.6.7",
+    "echarts": "^5.6.0",
     "element-plus": "^2.5.3",
     "hover.css": "^2.3.2",
     "json5": "^2.2.3",
