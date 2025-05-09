@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import LruCacheApi from '@/api/lru_cache';
 import DynamicChart from '@/components/DynamicChart.vue';
+import { useHttpLatencyTracker } from '@/scripts/LatencyCalculator';
 
 const test_env = () => {
   console.log(
@@ -62,9 +63,11 @@ const handleInputChange = (inputValue: string) => {
 const startInterval = () => {
   intervalId = setInterval(() => {
     for (let i = 0; i < reqFrequency.value; i++) {
-      // 这里是你要调用的函数，示例中只是简单打印
-      console.log('Function called');
-      averageLatency.value = reqFrequency.value;
+      // 直接调用trackRequest，不使用await
+      trackRequest(mockRequest())
+        .catch(error => {
+          console.error(`第${i + 1}次请求失败:`, error);
+        });
     }
   }, 1000);
 };
@@ -83,7 +86,28 @@ const toggleRunning = () => {
   }
 };
 
-const averageLatency = ref(0);
+// 配置5秒窗口（可修改为其他值如10000=10秒）
+const { trackRequest, avgLatency, windowMs } = useHttpLatencyTracker({
+  windowMs: 5000,       // 核心配置：统计窗口时间
+  cleanupInterval: 500  // 可选配置：清理间隔（默认1000ms）
+});
+
+// 记录延迟，转化为数字
+const displayLatency = computed<number>({
+  get() {
+    return avgLatency.value ?? 0; // 保持null时显示'-'
+  },
+  set(newValue) {
+  }
+});
+
+function mockRequest(): Promise<void> {
+  return new Promise((resolve) => {
+    // 生成100-1500ms的随机延迟
+    const delay = Math.floor(Math.random() * reqFrequency.value * 14) + 100;
+    setTimeout(() => resolve(), delay);
+  });
+}
 
 onUnmounted(() => {
   if (intervalId) {
@@ -113,7 +137,7 @@ onUnmounted(() => {
       <el-input v-model="reqFrequency" type="number" @input="handleInputChange" />
       <el-slider v-model="reqFrequency" />
     </div>
-    <DynamicChart v-model:x="reqFrequency" v-model:y="averageLatency" :max-points="200" />
+    <DynamicChart v-model:x="reqFrequency" v-model:y="displayLatency" :max-points="200" />
   </div>
 </template>
 

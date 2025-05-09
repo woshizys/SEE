@@ -65,7 +65,7 @@ const baseOptions: EChartsOption = {
     },
     yAxis: [
         {
-            name: '请求间隔 (ms)',
+            name: '请求频率 (/s)',
             min: 0,
             splitLine: { lineStyle: { type: 'dashed' } }
         },
