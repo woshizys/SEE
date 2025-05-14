@@ -3,4 +3,13 @@ name = "lru"
 version = "0.1.0"
 edition = "2021"
 
+[[bin]]
+name = "axum_server"
+path = "bin/axum_server.rs"
+
 [dependencies]
+axum = { version = "0.8", features = ["multipart"] }
+anyhow = "1.0"
+serde = { version = "1.0.219", features = ["derive"] }
+tokio = { version = "1.44", features = ["full"] }
+tower-http = { version = "0.6", features = ["cors"] }
