@@ -11,10 +11,12 @@ pub fn axum_router(tools: Tools) -> Router {
         .allow_methods(Any)
         .allow_headers(Any);
 
-    Router::new()
-        .route("/download", get(download))
-        .route("/upload", post(upload))
+    let api_router = Router::new()
+        .route("/lru", get(download))
+        .route("/lru", post(upload))
         .layer(Extension(tools))
         .layer(DefaultBodyLimit::disable())
-        .layer(cors)
+        .layer(cors);
+
+    Router::new().nest("/api", api_router)
 }
