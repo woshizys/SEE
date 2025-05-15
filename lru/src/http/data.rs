@@ -4,7 +4,7 @@ use axum::body::Bytes;
 use axum::extract::{Multipart, Query};
 use axum::http::{header, HeaderMap, StatusCode};
 use axum::response::IntoResponse;
-use axum::{Extension, Json};
+use axum::Extension;
 use std::hash::{DefaultHasher, Hasher};
 
 use super::common::{build_error_response, StandardApiResult};
@@ -47,13 +47,13 @@ pub async fn upload(
         let key = hasher.finish().to_string();
         lru_cache.put(key.clone(), buf);
 
-        let res = dtos::UploadResponse {
-            key,
-            size,
-        };
+        let res = dtos::UploadResponse { key, size };
         Ok(res.into())
     } else {
-        Err(build_error_response("10001".to_string(), "No data uploaded".to_string()))
+        Err(build_error_response(
+            "10001".to_string(),
+            "No data uploaded".to_string(),
+        ))
     }
 }
 

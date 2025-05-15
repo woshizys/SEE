@@ -12,11 +12,13 @@ const test_env = () => {
 };
 
 const downloadKey = ref('');
+const downloadedData = ref('');
 const downloadData = () => {
   console.log('start download data from', downloadKey.value);
   LruCacheApi.downloadData({ key: downloadKey.value })
     .then((res) => {
       console.log('res', res);
+      downloadedData.value = res.data as unknown as string
     })
     .catch((err) => {
       console.error('err', err);
@@ -24,12 +26,13 @@ const downloadData = () => {
 }
 
 const uploadContentText = ref('');
-const uploadKey = ref('');
+const uploadInfo = ref('');
 const uploadData = () => {
   console.log('start upload text data', uploadContentText.value);
-  LruCacheApi.uploadData({ content: uploadContentText.value })
+  LruCacheApi.uploadData(uploadContentText.value)
     .then((res) => {
       console.log('res', res);
+      uploadInfo.value = JSON.stringify(res.data.data);
     })
     .catch((err) => {
       console.error('err', err);
@@ -117,17 +120,25 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="image-example">
-    <WrappedImage></WrappedImage>
+  <div>
+    <br />
+    <el-input v-model="uploadContentText" placeholder="text to upload"></el-input>
+    <el-text><span style="font-weight: bold; font-size: 1.2em;">Uploaded data info:</span> {{ uploadInfo }}</el-text>
+    <br />
+    <el-button type="info" size="default" @click="uploadData">Upload Text Data to LRU Cache</el-button>
   </div>
-  <br />
-  <el-input v-model="downloadKey" placeholder="input key"></el-input>
-  <el-button type="info" size="default" @click="downloadData">Download Data From LRU Cache</el-button>
-  <br />
-  <el-input v-model="uploadContentText" placeholder="text to upload"></el-input>
-  <el-text>Key of the last uploaded data: {{ uploadKey }}</el-text>
-  <br />
-  <el-button type="info" size="default" @click="uploadData">Upload Text Data to LRU Cache</el-button>
+
+  <div style="margin: 1em;"></div>
+
+  <div>
+    <br />
+    <el-input v-model="downloadKey" placeholder="input key"></el-input>
+    <el-button type="info" size="default" @click="downloadData">Download Data From LRU Cache</el-button>
+    <br />
+    <el-text><span style="font-weight: bold; font-size: 1.2em;">Downloaded data:</span> {{ downloadedData }}</el-text>
+  </div>
+
+  <div style="margin: 2em;"></div>
 
   <div>
     <span>Cache Switch: </span><el-switch v-model="isTurnOnCache" size="large" />
