@@ -1,21 +1,18 @@
 use crate::http::Tools;
 use crate::lru::cache::Cache;
 use axum::body::Bytes;
-use axum::extract::Multipart;
+use axum::extract::{Multipart, Query};
 use axum::http::{header, HeaderMap, StatusCode};
 use axum::response::IntoResponse;
 use axum::{Extension, Json};
-use serde::{Deserialize, Serialize};
 use std::hash::{DefaultHasher, Hasher};
 
-#[derive(Clone, Serialize, Deserialize)]
-pub struct DownloadReq {
-    key: String,
-}
+use super::common::{build_error_response, StandardApiResult};
+use super::dtos;
 
 pub async fn download(
     Extension(tools): Extension<Tools>,
-    Json(req): Json<DownloadReq>,
+    Query(req): Query<dtos::DownloadRequest>,
 ) -> impl IntoResponse {
     let key = req.key;
     let mut lru_cache = tools.lru_cache.write().await;
@@ -32,25 +29,31 @@ pub async fn download(
     );
     match res {
         Some(buf) => Ok((headers, Bytes::from(buf.to_vec()))),
-        None => Err((StatusCode::NOT_FOUND, "Data not found")),
+        None => Err((StatusCode::NOT_FOUND, "Data not found".to_string())),
     }
 }
 
 pub async fn upload(
     Extension(tools): Extension<Tools>,
     mut multipart: Multipart,
-) -> impl IntoResponse {
+) -> StandardApiResult<dtos::UploadResponse> {
     let mut lru_cache = tools.lru_cache.write().await;
     if let Some(field) = multipart.next_field().await.unwrap() {
         let buf = field.bytes().await.unwrap();
         let buf = buf.to_vec();
+        let size = buf.len();
         let mut hasher = DefaultHasher::new();
         hasher.write(&buf);
         let key = hasher.finish().to_string();
         lru_cache.put(key.clone(), buf);
-        Ok((StatusCode::OK, key))
+
+        let res = dtos::UploadResponse {
+            key,
+            size,
+        };
+        Ok(res.into())
     } else {
-        Err((StatusCode::BAD_REQUEST, "No data has uploaded yet"))
+        Err(build_error_response("10001".to_string(), "No data uploaded".to_string()))
     }
 }
 
