@@ -16,7 +16,7 @@ struct Tools {
 }
 
 pub async fn axum_serve(port: u64) {
-    let lru_cache: Arc<RwLock<LRUCache<String, Vec<u8>>>> = Arc::new(RwLock::new(LRUCache::new(NonZeroUsize::new(500).unwrap())));
+    let lru_cache: Arc<RwLock<LRUCache<String, Vec<u8>>>> = Arc::new(RwLock::new(LRUCache::new(NonZeroUsize::new(5).unwrap())));
 
     let axum_app = axum_router(Tools { lru_cache: lru_cache.clone() });
     let listener = TcpListener::bind(format!("0.0.0.0:{}", port)).await.unwrap();

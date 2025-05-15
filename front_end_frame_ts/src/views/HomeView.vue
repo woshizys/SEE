@@ -2,6 +2,7 @@
 import LruCacheApi from '@/api/lru_cache';
 import DynamicChart from '@/components/DynamicChart.vue';
 import { useHttpLatencyTracker } from '@/scripts/LatencyCalculator';
+import MockDataClient from '@/scripts/MockDataClient';
 
 const test_env = () => {
   console.log(
@@ -40,6 +41,14 @@ const uploadData = () => {
 }
 
 const isTurnOnCache = ref(false);
+const turnOnCache = () => {
+  if(isTurnOnCache.value) {
+    mockDataClient.turnOnCache();
+  } else {
+    mockDataClient.turnOffCache();
+  }
+  
+}
 
 const minFrequency = 1;
 const maxFrequency = 100;
@@ -66,8 +75,7 @@ const handleInputChange = (inputValue: string) => {
 const startInterval = () => {
   intervalId = setInterval(() => {
     for (let i = 0; i < reqFrequency.value; i++) {
-      // 直接调用trackRequest，不使用await
-      trackRequest(mockRequest())
+      trackRequest(mockDataClient.randomDownload())
         .catch(error => {
           console.error(`第${i + 1}次请求失败:`, error);
         });
@@ -104,13 +112,19 @@ const displayLatency = computed<number>({
   }
 });
 
-function mockRequest(): Promise<void> {
-  return new Promise((resolve) => {
-    // 生成100-1500ms的随机延迟
-    const delay = Math.floor(Math.random() * reqFrequency.value * 14) + 100;
-    setTimeout(() => resolve(), delay);
-  });
-}
+// function mockRequest(): Promise<void> {
+//   return new Promise((resolve) => {
+//     // 生成100-1500ms的随机延迟
+//     const delay = Math.floor(Math.random() * reqFrequency.value * 14) + 100;
+//     setTimeout(() => resolve(), delay);
+//   });
+// }
+
+const mockDataClient = new MockDataClient();
+
+onMounted(() => {
+  mockDataClient.initTestData(8, 10);
+})
 
 onUnmounted(() => {
   if (intervalId) {
@@ -141,7 +155,7 @@ onUnmounted(() => {
   <div style="margin: 2em;"></div>
 
   <div>
-    <span>Cache Switch: </span><el-switch v-model="isTurnOnCache" size="large" />
+    <span>Cache Switch: </span><el-switch v-model="isTurnOnCache" @change="turnOnCache" size="large" />
     <br />
     <span>Request Switch: </span><el-switch v-model="isRunning" @change="toggleRunning" />
     <div class="slider-demo-block">
