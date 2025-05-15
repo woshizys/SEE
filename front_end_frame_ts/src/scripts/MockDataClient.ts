@@ -1,5 +1,5 @@
 import LruCacheApi from "@/api/lru_cache";
-import { generateRandomString } from "@/utils";
+import { generateRandomString, simulateNetworkCongestion } from "@/utils";
 
 export default class MockDataClient {
     private isCacheOn: number = 0;
@@ -36,9 +36,8 @@ export default class MockDataClient {
 
     // 模拟数据库访问（带随机延迟）
     private async fetchFromDB(key: string): Promise<string | null> {
-        // 生成随机延迟
-        const delay = Math.floor(Math.random() * 200) + 200;
-        await new Promise(resolve => setTimeout(resolve, delay));
+        // 模拟延迟
+        await simulateNetworkCongestion(100, 50);
 
         return this.db[key] ?? null;
     }
