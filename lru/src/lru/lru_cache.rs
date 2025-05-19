@@ -8,6 +8,7 @@ use std::ptr::{null_mut, NonNull};
 use std::{fmt, mem};
 
 use crate::lru::cache::{self, Cache, KeyRef};
+use crate::lru::item_size::ItemSize;
 
 type Replace<K, V> = (Option<(K, V)>, NonNull<LRUEntry<K, V>>);
 
@@ -174,6 +175,7 @@ unsafe impl<K: Sync, V: Sync> Sync for IterMut<'_, K, V> {}
 pub struct IntoIter<K, V>
 where
     K: Hash + Eq,
+    V: ItemSize,
 {
     cache: LRUCache<K, V>,
 }
@@ -181,6 +183,7 @@ where
 impl<K, V> Iterator for IntoIter<K, V>
 where
     K: Hash + Eq,
+    V: ItemSize,
 {
     type Item = (K, V);
 
@@ -194,8 +197,15 @@ where
     fn count(self) -> usize { self.cache.len() }
 }
 
-impl<K, V> ExactSizeIterator for IntoIter<K, V> where K: Hash + Eq {}
-impl<K, V> FusedIterator for IntoIter<K, V> where K: Hash + Eq {}
+impl<K, V> ExactSizeIterator for IntoIter<K, V> where K: Hash + Eq, V: ItemSize {}
+impl<K, V> FusedIterator for IntoIter<K, V> where K: Hash + Eq, V: ItemSize {}
+
+#[derive(Debug, Clone)]
+pub enum CacheMode {
+    ItemLimit,
+    StoreLimit,
+    UnLimit,
+}
 
 /// A LRU cache.
 /// This is a single level thread unsafe LRU implementation.
@@ -203,8 +213,12 @@ impl<K, V> FusedIterator for IntoIter<K, V> where K: Hash + Eq {}
 pub struct LRUCache<K, V, S = cache::DefaultHasher> {
     // map is used to speed up LRU access.
     map: HashMap<KeyRef<K>, NonNull<LRUEntry<K, V>>, S>,
+    // cache_mode is used to set the mode of cache: limit by number of items, limit by capacity, unlimited
+    cache_mode: CacheMode,
     // cap is used to specific LRU cache capacity.
     cap: NonZeroUsize,
+    // used_cap is items/capacity used
+    used_cap: usize,
 
     // head and tail are sigil nodes to facilitate inserting entries
     head: *mut LRUEntry<K, V>,
@@ -214,13 +228,16 @@ pub struct LRUCache<K, V, S = cache::DefaultHasher> {
 impl<K, V, S> LRUCache<K, V, S>
 where
     K: Hash + Eq,
+    V: ItemSize,
     S: BuildHasher,
 {
     /// Creates a new LRU Cache with the given capacity.
-    fn construct(cap: NonZeroUsize, map: HashMap<KeyRef<K>, NonNull<LRUEntry<K, V>>, S>) -> Self {
+    fn construct(cache_mode: CacheMode, cap: NonZeroUsize, map: HashMap<KeyRef<K>, NonNull<LRUEntry<K, V>>, S>) -> Self {
         let cache = LRUCache {
             map,
+            cache_mode,
             cap,
+            used_cap: 0,
             head: Box::into_raw(Box::new(LRUEntry::new_sigil())),
             tail: Box::into_raw(Box::new(LRUEntry::new_sigil())),
         };
@@ -280,32 +297,91 @@ where
 
     // Used internally to swap out a node if the cache is full or to create a new node if space
     // is available. Shared between `put`, `push`, `get_or_insert`, and `get_or_insert_mut`.
+    // fn replace_or_create_node(&mut self, k: K, v: V) -> Replace<K, V> {
+    //     if self.len() == self.cap().get() {
+    //         // if the cache is full, remove the last entry so we can use it for the new key.
+    //         let old_key = KeyRef {
+    //             k: unsafe { &(*(*(*self.tail).prev).key.as_ptr()) },
+    //         };
+    //
+    //         let old_node = self.map.remove(&old_key).unwrap();
+    //
+    //         let node_ptr: *mut LRUEntry<K, V> = old_node.as_ptr();
+    //
+    //         // read out the node's old key and value and then replace it
+    //         let replaced = unsafe {
+    //             (
+    //                 mem::replace(&mut (*node_ptr).key, mem::MaybeUninit::new(k)).assume_init(),
+    //                 mem::replace(&mut (*node_ptr).value, mem::MaybeUninit::new(v)).assume_init(),
+    //             )
+    //         };
+    //
+    //         self.detach(node_ptr);
+    //
+    //         (Some(replaced), old_node)
+    //     } else {
+    //         (None, unsafe {
+    //             NonNull::new_unchecked(Box::into_raw(Box::new(LRUEntry::new(k, v))))
+    //         })
+    //     }
+    // }
+
     fn replace_or_create_node(&mut self, k: K, v: V) -> Replace<K, V> {
-        if self.len() == self.cap().get() {
-            // if the cache is full, remove the last entry so we can use it for the new key.
-            let old_key = KeyRef {
-                k: unsafe { &(*(*(*self.tail).prev).key.as_ptr()) },
-            };
+        match &self.cache_mode {
+            CacheMode::ItemLimit => {
+                if self.len() == self.cap().get() {
+                    // if the cache is full, remove the last entry so we can use it for the new key.
+                    let old_key = KeyRef {
+                        k: unsafe { &(*(*(*self.tail).prev).key.as_ptr()) },
+                    };
 
-            let old_node = self.map.remove(&old_key).unwrap();
+                    let old_node = self.map.remove(&old_key).unwrap();
 
-            let node_ptr: *mut LRUEntry<K, V> = old_node.as_ptr();
+                    let node_ptr: *mut LRUEntry<K, V> = old_node.as_ptr();
 
-            // read out the node's old key and value and then replace it
-            let replaced = unsafe {
-                (
-                    mem::replace(&mut (*node_ptr).key, mem::MaybeUninit::new(k)).assume_init(),
-                    mem::replace(&mut (*node_ptr).value, mem::MaybeUninit::new(v)).assume_init(),
-                )
-            };
+                    // read out the node's old key and value and then replace it
+                    let replaced = unsafe {
+                        (
+                            mem::replace(&mut (*node_ptr).key, mem::MaybeUninit::new(k)).assume_init(),
+                            mem::replace(&mut (*node_ptr).value, mem::MaybeUninit::new(v)).assume_init(),
+                        )
+                    };
 
-            self.detach(node_ptr);
+                    self.detach(node_ptr);
 
-            (Some(replaced), old_node)
-        } else {
-            (None, unsafe {
-                NonNull::new_unchecked(Box::into_raw(Box::new(LRUEntry::new(k, v))))
-            })
+                    (Some(replaced), old_node)
+                } else {
+                    (None, unsafe {
+                        NonNull::new_unchecked(Box::into_raw(Box::new(LRUEntry::new(k, v))))
+                    })
+                }
+            }
+            CacheMode::StoreLimit => {
+                // if insert V's size > cap, system will be error
+                let size = v.size_of();
+                let mut replaced_item = None;
+                while self.used_cap + size > self.cap().get() {
+                    let replaced = self.pop_last().unwrap();
+
+                    let v = &replaced.1;
+                    let pop_size = v.size_of();
+                    self.used_cap -= pop_size;
+
+                    replaced_item = Some(replaced);
+                }
+                self.used_cap += size;
+                (replaced_item, unsafe {
+                    NonNull::new_unchecked(Box::into_raw(Box::new(LRUEntry::new(k, v))))
+                })
+                /* `(std::option::Option<(K, V)>, std::ptr::NonNull<lru::lru_cache::LRUEntry<K, V>>)` value */
+                /* `(std::option::Option<(K, V)>, std::ptr::NonNull<lru::lru_cache::LRUEntry<K, V>>)` value */
+                /* `(std::option::Option<(K, V)>, std::ptr::NonNull<lru::lru_cache::LRUEntry<K, V>>)` value */
+            }
+            CacheMode::UnLimit => {
+                (None, unsafe {
+                    NonNull::new_unchecked(Box::into_raw(Box::new(LRUEntry::new(k, v))))
+                })
+            }
         }
     }
 
@@ -329,7 +405,7 @@ where
                 self.attach(node_ptr);
 
                 Some((k, v))
-            },
+            }
             None => {
                 let (replaced, node) = self.replace_or_create_node(k, v);
 
@@ -342,20 +418,21 @@ where
                 self.map.insert(key_ref, node);
 
                 replaced.filter(|_| capture)
-            },
+            }
         }
     }
 
     /// Creates a new LRU Cache that holds at most `cap` items and
     /// uses the provided hash builder to hash keys.
-    pub fn with_hasher(cap: NonZeroUsize, hasher: S) -> Self {
-        LRUCache::construct(cap, HashMap::with_capacity_and_hasher(cap.get(), hasher))
+    pub fn with_hasher(cache_mode: CacheMode, cap: NonZeroUsize, hasher: S) -> Self {
+        LRUCache::construct(cache_mode, cap, HashMap::with_capacity_and_hasher(cap.get(), hasher))
     }
 
     /// Creates a new LRU Cache that never automatically evicts items and
     /// uses the provided hash builder to hash keys.
-    pub fn unbounded_with_hasher(hasher: S) -> Self {
+    pub fn unbounded_with_hasher(cache_mode: CacheMode, hasher: S) -> Self {
         LRUCache::construct(
+            cache_mode,
             NonZeroUsize::new(usize::MAX).unwrap(),
             HashMap::with_hasher(hasher),
         )
@@ -387,21 +464,28 @@ where
 impl<K, V> LRUCache<K, V>
 where
     K: Hash + Eq,
+    V: ItemSize,
 {
     /// Creates a new LRU Cache that holds at most `cap` items.
     pub fn new(cap: NonZeroUsize) -> Self {
-        LRUCache::construct(cap, HashMap::with_capacity(cap.get()))
+        LRUCache::construct(CacheMode::ItemLimit, cap, HashMap::with_capacity(cap.get()))
+    }
+
+    /// Creates a new LRU Cache that holds at most `cap` capacity(MB).
+    pub fn storage(cap: NonZeroUsize) -> Self {
+        LRUCache::construct(CacheMode::StoreLimit, cap, HashMap::with_capacity(cap.get()))
     }
 
     /// Creates a new LRU Cache that never automatically evicts items.
     pub fn unbounded() -> Self {
-        LRUCache::construct(NonZeroUsize::new(usize::MAX).unwrap(), HashMap::default())
+        LRUCache::construct(CacheMode::UnLimit, NonZeroUsize::new(usize::MAX).unwrap(), HashMap::default())
     }
 }
 
 impl<K, V, S> Cache<K, V, S> for LRUCache<K, V, S>
 where
     K: Hash + Eq,
+    V: ItemSize,
     S: BuildHasher,
 {
     fn len(&self) -> usize { self.map.len() }
@@ -562,7 +646,7 @@ where
 
                 let LRUEntry { value, .. } = old_node;
                 Some(unsafe { value.assume_init() })
-            },
+            }
             None => None,
         }
     }
@@ -579,7 +663,7 @@ where
 
                 let LRUEntry { key, value, .. } = old_node;
                 Some(unsafe { (key.assume_init(), value.assume_init()) })
-            },
+            }
             None => None,
         }
     }
@@ -645,14 +729,14 @@ impl<K, V, S> Drop for LRUCache<K, V, S> {
     }
 }
 
-impl<'a, K: Hash + Eq, V, S: BuildHasher> IntoIterator for &'a LRUCache<K, V, S> {
+impl<'a, K: Hash + Eq, V: ItemSize, S: BuildHasher> IntoIterator for &'a LRUCache<K, V, S> {
     type IntoIter = Iter<'a, K, V>;
     type Item = (&'a K, &'a V);
 
     fn into_iter(self) -> Self::IntoIter { self.iter() }
 }
 
-impl<'a, K: Hash + Eq, V, S: BuildHasher> IntoIterator for &'a mut LRUCache<K, V, S> {
+impl<'a, K: Hash + Eq, V: ItemSize, S: BuildHasher> IntoIterator for &'a mut LRUCache<K, V, S> {
     type IntoIter = IterMut<'a, K, V>;
     type Item = (&'a K, &'a mut V);
 
@@ -662,7 +746,7 @@ impl<'a, K: Hash + Eq, V, S: BuildHasher> IntoIterator for &'a mut LRUCache<K, V
 unsafe impl<K: Send, V: Send, S: Send> Send for LRUCache<K, V, S> {}
 unsafe impl<K: Sync, V: Sync, S: Sync> Sync for LRUCache<K, V, S> {}
 
-impl<K: Hash + Eq, V> fmt::Debug for LRUCache<K, V> {
+impl<K: Hash + Eq, V: ItemSize> fmt::Debug for LRUCache<K, V> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_struct("LRUCache")
             .field("len", &self.len())
@@ -671,7 +755,7 @@ impl<K: Hash + Eq, V> fmt::Debug for LRUCache<K, V> {
     }
 }
 
-impl<K: Hash + Eq, V> IntoIterator for LRUCache<K, V> {
+impl<K: Hash + Eq, V: ItemSize> IntoIterator for LRUCache<K, V> {
     type IntoIter = IntoIter<K, V>;
     type Item = (K, V);
 
@@ -686,19 +770,21 @@ mod tests {
 
     use super::LRUCache;
     use crate::lru::cache::Cache;
+    use crate::lru::item_size::ItemSize;
+
     extern crate alloc;
 
-    fn assert_opt_eq<V: PartialEq + Debug>(opt: Option<&V>, v: V) {
+    fn assert_opt_eq<V: PartialEq + Debug + ItemSize>(opt: Option<&V>, v: V) {
         assert!(opt.is_some());
         assert_eq!(opt.unwrap(), &v);
     }
 
-    fn assert_opt_eq_mut<V: PartialEq + Debug>(opt: Option<&mut V>, v: V) {
+    fn assert_opt_eq_mut<V: PartialEq + Debug + ItemSize>(opt: Option<&mut V>, v: V) {
         assert!(opt.is_some());
         assert_eq!(opt.unwrap(), &v);
     }
 
-    fn assert_opt_eq_tuple<K: PartialEq + Debug, V: PartialEq + Debug>(
+    fn assert_opt_eq_tuple<K: PartialEq + Debug, V: PartialEq + Debug + ItemSize>(
         opt: Option<(&K, &V)>,
         kv: (K, V),
     ) {
@@ -708,7 +794,7 @@ mod tests {
         assert_eq!(res.1, &kv.1);
     }
 
-    fn assert_opt_eq_mut_tuple<K: PartialEq + Debug, V: PartialEq + Debug>(
+    fn assert_opt_eq_mut_tuple<K: PartialEq + Debug, V: PartialEq + Debug + ItemSize>(
         opt: Option<(&K, &mut V)>,
         kv: (K, V),
     ) {
@@ -1269,6 +1355,8 @@ mod tests {
 
         struct DropCounter;
 
+        impl ItemSize for DropCounter { fn size_of(&self) -> usize { 1 } }
+
         impl Drop for DropCounter {
             fn drop(&mut self) { DROP_COUNT.fetch_add(1, Ordering::SeqCst); }
         }
@@ -1288,6 +1376,8 @@ mod tests {
         static DROP_COUNT: AtomicUsize = AtomicUsize::new(0);
 
         struct DropCounter;
+
+        impl ItemSize for DropCounter { fn size_of(&self) -> usize { 1 } }
 
         impl Drop for DropCounter {
             fn drop(&mut self) { DROP_COUNT.fetch_add(1, Ordering::SeqCst); }
@@ -1309,6 +1399,8 @@ mod tests {
         static DROP_COUNT: AtomicUsize = AtomicUsize::new(0);
 
         struct DropCounter;
+
+        impl ItemSize for DropCounter { fn size_of(&self) -> usize { 1 } }
 
         impl Drop for DropCounter {
             fn drop(&mut self) { DROP_COUNT.fetch_add(1, Ordering::SeqCst); }
