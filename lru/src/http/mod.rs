@@ -8,6 +8,8 @@ use tokio::sync::RwLock;
 
 mod router;
 mod data;
+mod common;
+mod dtos;
 
 #[derive(Debug, Clone)]
 struct Tools {
