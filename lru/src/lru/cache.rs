@@ -1,3 +1,4 @@
+use crate::lru::item_size::ItemSize;
 use std::borrow::Borrow;
 use std::hash::{Hash, Hasher};
 use std::num::NonZeroUsize;
@@ -38,6 +39,7 @@ impl<T> Borrow<[T]> for KeyRef<Vec<T>> {
 pub trait Cache<K, V, S = DefaultHasher>
 where
     K: Hash + Eq,
+    V: ItemSize,
 {
     /// Returns the number of key-value pairs that are currently in the the cache.
     fn len(&self) -> usize;
