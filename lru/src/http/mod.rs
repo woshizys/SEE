@@ -17,7 +17,7 @@ struct Tools {
 }
 
 pub async fn axum_serve(config: Config) {
-    let port = config.get::<u16>("port").unwrap();
+    let port = config.get::<u16>("server_port").unwrap();
     let cache_mode = config.get::<String>("cache_mode").unwrap();
     let cache_size = config.get::<usize>("cache_size").unwrap();
 
