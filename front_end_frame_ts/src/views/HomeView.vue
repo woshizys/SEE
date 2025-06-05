@@ -12,28 +12,36 @@ const test_env = () => {
   console.debug('import.meta.env.BASE_URL', import.meta.env.BASE_URL);
 };
 
-const downloadKey = ref('');
-const downloadedData = ref('');
-const downloadData = () => {
-  console.log('start download data from', downloadKey.value);
-  LruCacheApi.downloadData({ key: downloadKey.value })
+const uploadContentText = ref('');
+const uploadInfo = ref('');
+const uploadData = () => {
+  if (!uploadContentText.value.trim()) {
+    ElMessage.error('Text to upload cannot be empty');
+    return;
+  }
+  console.log('start upload text data', uploadContentText.value);
+  LruCacheApi.uploadData(uploadContentText.value)
     .then((res) => {
       console.log('res', res);
-      downloadedData.value = res.data as unknown as string
+      uploadInfo.value = JSON.stringify(res.data.data);
     })
     .catch((err) => {
       console.error('err', err);
     });
 }
 
-const uploadContentText = ref('');
-const uploadInfo = ref('');
-const uploadData = () => {
-  console.log('start upload text data', uploadContentText.value);
-  LruCacheApi.uploadData(uploadContentText.value)
+const downloadKey = ref('');
+const downloadedData = ref('');
+const downloadData = () => {
+  if (!downloadKey.value.trim()) {
+    ElMessage.error('Input key cannot be empty');
+    return;
+  }
+  console.log('start download data from', downloadKey.value);
+  LruCacheApi.downloadData({ key: downloadKey.value })
     .then((res) => {
       console.log('res', res);
-      uploadInfo.value = JSON.stringify(res.data.data);
+      downloadedData.value = res.data as unknown as string
     })
     .catch((err) => {
       console.error('err', err);
