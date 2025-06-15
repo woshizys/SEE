@@ -85,15 +85,20 @@ export default class MockDataClient {
 
     // 随机下载一个数据库里的数据
     async randomDownload(): Promise<string | null> {
-        const dbKeys = Object.keys(this.db);
-        if (dbKeys.length === 0) {
-            console.log("数据库为空，无法随机下载");
-            return null;
-        }
+      const dbKeys = Object.keys(this.db);
+      if (dbKeys.length === 0) {
+        console.log('数据库为空，无法随机下载');
+        return null;
+      }
 
-        const randomIndex = Math.floor(Math.random() * dbKeys.length);
-        const randomKey = dbKeys[randomIndex];
-        return await this.downloadData(randomKey);
+      // const randomIndex = Math.floor(Math.random() * dbKeys.length);
+      // 50% 的概率从前三个元素中选择，50% 的概率从所有元素中选择
+      const randomIndex =
+        Math.random() < 0.5
+          ? Math.floor(Math.random() * Math.min(3, dbKeys.length))
+          : Math.floor(Math.random() * dbKeys.length);
+      const randomKey = dbKeys[randomIndex];
+      return await this.downloadData(randomKey);
     }
 }
 

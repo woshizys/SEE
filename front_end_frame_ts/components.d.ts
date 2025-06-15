@@ -9,11 +9,7 @@ declare module 'vue' {
   export interface GlobalComponents {
     DynamicChart: typeof import('./src/components/DynamicChart.vue')['default']
     ElButton: typeof import('element-plus/es')['ElButton']
-    ElFormItem: typeof import('element-plus/es')['ElFormItem']
-    ElIcon: typeof import('element-plus/es')['ElIcon']
-    ElImage: typeof import('element-plus/es')['ElImage']
     ElInput: typeof import('element-plus/es')['ElInput']
-    ElLabel: typeof import('element-plus/es')['ElLabel']
     ElSlider: typeof import('element-plus/es')['ElSlider']
     ElSwitch: typeof import('element-plus/es')['ElSwitch']
     ElText: typeof import('element-plus/es')['ElText']

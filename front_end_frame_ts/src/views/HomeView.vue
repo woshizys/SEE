@@ -131,7 +131,7 @@ const displayLatency = computed<number>({
 const mockDataClient = new MockDataClient();
 
 onMounted(() => {
-  mockDataClient.initTestData(8, 10);
+  mockDataClient.initTestData(10, 8);
 })
 
 onUnmounted(() => {
