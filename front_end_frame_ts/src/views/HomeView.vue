@@ -22,10 +22,12 @@ const uploadData = () => {
   console.log('start upload text data', uploadContentText.value);
   LruCacheApi.uploadData(uploadContentText.value)
     .then((res) => {
+      ElMessage.success("成功上传目标数据");
       console.log('res', res);
       uploadInfo.value = JSON.stringify(res.data.data);
     })
     .catch((err) => {
+      ElMessage.error("无法上传目标数据");
       console.error('err', err);
     });
 }
@@ -40,10 +42,12 @@ const downloadData = () => {
   console.log('start download data from', downloadKey.value);
   LruCacheApi.downloadData({ key: downloadKey.value })
     .then((res) => {
+      ElMessage.success("成功下载目标数据");
       console.log('res', res);
       downloadedData.value = res.data as unknown as string
     })
     .catch((err) => {
+      ElMessage.error("无法下载目标数据");
       console.error('err', err);
     });
 }
@@ -131,7 +135,7 @@ const displayLatency = computed<number>({
 const mockDataClient = new MockDataClient();
 
 onMounted(() => {
-  mockDataClient.initTestData(10, 8);
+  mockDataClient.initTestData(20, 8);
 })
 
 onUnmounted(() => {
